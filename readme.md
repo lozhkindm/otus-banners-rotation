@@ -124,3 +124,7 @@ https://habr.com/ru/company/surfingbird/blog/168611/
 * Понятность и чистота кода - до 3 баллов.
 
 #### Зачёт от 10 баллов
+
+## Схема БД
+
+<img src="./schema.png" width="880" alt="model">

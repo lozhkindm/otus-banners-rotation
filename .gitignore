@@ -1,1 +1,5 @@
 .idea/
+bin/
+docker/
+configs/.env
+configs/.env.goose
