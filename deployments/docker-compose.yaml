@@ -1,0 +1,85 @@
+version: '3.9'
+
+services:
+  postgres:
+    restart: always
+    image: postgres:13.6-alpine
+    environment:
+      POSTGRES_DB: banners
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ../docker/pgdata:/var/lib/postgresql/data:rw
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - otus-network
+
+  rabbit:
+    restart: always
+    image: rabbitmq:3.10.6-management
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - otus-network
+
+  migrations:
+    build:
+      context: ../
+      dockerfile: build/goose.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env
+        - DIR=migrations
+    depends_on:
+      postgres:
+       condition: service_healthy
+    networks:
+      - otus-network
+
+  seeds:
+    build:
+      context: ../
+      dockerfile: build/goose.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env
+        - DIR=seeds
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_started
+    networks:
+      - otus-network
+
+  banners:
+    restart: on-failure
+    build:
+      context: ../
+      dockerfile: build/banners.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env
+    ports:
+      - "8099:8099"
+    depends_on:
+      - postgres
+      - rabbit
+      - migrations
+      - seeds
+    networks:
+      - otus-network
+
+networks:
+  otus-network:
+    driver: bridge

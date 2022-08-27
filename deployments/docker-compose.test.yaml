@@ -1,0 +1,106 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:13.6-alpine
+    environment:
+      POSTGRES_DB: banners
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "65432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  rabbit:
+    image: rabbitmq:3.10.6-management
+    ports:
+      - "15672:5672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  migrations:
+    build:
+      context: ../
+      dockerfile: build/goose.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env.testing
+        - DIR=migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  seeds:
+    build:
+      context: ../
+      dockerfile: build/goose.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env.testing
+        - DIR=seeds
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_started
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  banners:
+    build:
+      context: ../
+      dockerfile: build/banners.dockerfile
+      args:
+        - CONFIG_FILE_NAME=.env.testing
+    ports:
+      - "8011:8011"
+    depends_on:
+      - postgres
+      - rabbit
+      - migrations
+      - seeds
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  tests:
+    build: ../tests
+    environment:
+      POSTGRES_DSN: postgresql://user:secret@host.docker.internal:65432/banners
+      RABBITMQ_DSN: amqp://guest:guest@host.docker.internal:15672/
+      HTTP_HOST: http://host.docker.internal:8011
+    depends_on:
+      - postgres
+      - rabbit
+      - migrations
+      - seeds
+      - banners
+    networks:
+      - test-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  test-network:
+    driver: bridge
